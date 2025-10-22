@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản lý khuyến mãi</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div th:replace="fragments/header :: header"></div>
+
+<main class="container">
+    <div class="page-header">
+        <h1>Quản lý Khuyến Mãi</h1>
+        <a class="btn" href="/promotions/new">+ Thêm phiếu khuyến mãi</a>
+    </div>
+
+    <div class="search-bar">
+        <input id="keyword" type="text" placeholder="Nhập tên khuyến mãi ..." />
+        <select id="statusFilter">
+            <option value="">Tất cả trạng thái</option>
+            <option value="ACTIVE">Đang hoạt động</option>
+            <option value="INACTIVE">Không hoạt động</option>
+            <option value="EXPIRED">Đã hết hạn</option>
+            <option value="UPCOMING">Sắp diễn ra</option>
+        </select>
+        <button class="btn" id="btnSearch">Tìm kiếm</button>
+        <div class="spacer"></div>
+            <button class="btn" id="btnQuickActive">Đang hoạt động</button>
+            <button class="btn" id="btnQuickExpiring">Sắp hết hạn</button>
+            <select id="pageSizeSelect">
+                <option value="5">5/trang</option>
+                <option value="10">10/trang</option>
+                <option value="20">20/trang</option>
+            </select>
+    </div>
+
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+            <tr>
+                <th>STT</th>
+                <th>ID Khuyến mãi</th>
+                <th class="sortable" data-sort="name">Tên loại khuyến mãi ⬍</th>
+                <th>Giảm giá (%)</th>
+                <th class="sortable" data-sort="start">Bắt đầu ⬍</th>
+                <th class="sortable" data-sort="end">Kết thúc ⬍</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+            </tr>
+            </thead>
+            <tbody id="promotionRows"></tbody>
+        </table>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+    <div id="message" class="alert" style="display:none"></div>
+</main>
+
+<div th:replace="fragments/footer :: footer"></div>
+
+<script>
+const apiBase = '/api/promotions';
+
+let currentPage = 0;
+let pageSize = 5;
+
+function formatDate(d) {
+  return d ? new Date(d).toLocaleDateString('vi-VN') : '';
+}
+
+function loadPage(page=0) {
+  const keyword = document.getElementById('keyword').value.trim();
+  const status = document.getElementById('statusFilter').value;
+  let url;
+  if (keyword) {
+    url = `${apiBase}/search/paginated?keyword=${encodeURIComponent(keyword)}&page=${page}&size=${pageSize}`;
+  } else if (status) {
+    url = `${apiBase}/status/${status}/paginated?page=${page}&size=${pageSize}`;
+  } else {
+    url = `${apiBase}/paginated?page=${page}&size=${pageSize}`;
+  }
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      const content = data.content || [];
+      const tbody = document.getElementById('promotionRows');
+      tbody.innerHTML = content.map((p, idx) => `
+        <tr>
+          <td>${page*pageSize + idx + 1}</td>
+          <td>${p.idPromotion ?? ''}</td>
+          <td>${p.name}</td>
+          <td>${p.discountPercent}</td>
+          <td>${formatDate(p.startDate)}</td>
+          <td>${formatDate(p.endDate)}</td>
+          <td><span class="badge ${p.status}">${getStatusText(p.status)}</span></td>
+          <td class="actions">
+            <a class="icon-btn" title="Xem" href="/promotions/edit?id=${p.idPromotion}">👁️</a>
+            <a class="icon-btn" title="Sửa" href="/promotions/edit?id=${p.idPromotion}">✏️</a>
+            <button class="icon-btn" title="Xóa" onclick="removePromotion(${p.idPromotion})">🗑️</button>
+          </td>
+        </tr>`).join('');
+
+      renderPagination(data.totalPages || 1, page);
+    });
+}
+
+function renderPagination(total, page) {
+  currentPage = page;
+  const container = document.getElementById('pagination');
+  let html = '';
+  for (let i = 0; i < total; i++) {
+    html += `<button class="page-btn ${i===page?'active':''}" onclick="loadPage(${i})">${i+1}</button>`;
+  }
+  container.innerHTML = html;
+}
+
+function removePromotion(id) {
+  if (!confirm('Bạn có chắc muốn xóa?')) return;
+  fetch(`${apiBase}/${id}`, { method: 'DELETE' })
+    .then(r => {
+      if (r.ok) {
+        showMessage('Đã xóa khuyến mãi', 'success');
+        loadPage(currentPage);
+      } else {
+        showMessage('Xóa thất bại', 'error');
+      }
+    });
+}
+
+document.getElementById('btnSearch').addEventListener('click', () => loadPage(0));
+document.getElementById('keyword').addEventListener('keydown', e => { if (e.key==='Enter') loadPage(0); });
+document.getElementById('statusFilter').addEventListener('change', () => loadPage(0));
+document.getElementById('btnQuickActive').addEventListener('click', () => { document.getElementById('statusFilter').value='ACTIVE'; loadPage(0); });
+document.getElementById('btnQuickExpiring').addEventListener('click', () => loadSorted('expiring'));
+document.getElementById('pageSizeSelect').addEventListener('change', (e) => { pageSize = parseInt(e.target.value); loadPage(0); });
+
+// Column sorting using dedicated endpoints (non-paginated)
+document.querySelectorAll('.sortable').forEach(th => th.addEventListener('click', () => {
+  const key = th.dataset.sort;
+  if (key==='name') loadSorted('name');
+  if (key==='start') loadSorted('start');
+  if (key==='end') loadSorted('end');
+}));
+
+function loadSorted(type){
+  let url = `${apiBase}`;
+  if (type==='name') url += '/sorted/name';
+  else if (type==='start') url += '/sorted/start-date';
+  else if (type==='end') url += '/sorted/end-date';
+  else if (type==='expiring') url += '/expiring-soon';
+  fetch(url)
+    .then(r=>r.json())
+    .then(list => {
+      const tbody = document.getElementById('promotionRows');
+      tbody.innerHTML = list.map((p, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${p.idPromotion ?? ''}</td>
+          <td>${p.name}</td>
+          <td>${p.discountPercent}</td>
+          <td>${formatDate(p.startDate)}</td>
+          <td>${formatDate(p.endDate)}</td>
+          <td><span class="badge ${p.status}">${getStatusText(p.status)}</span></td>
+          <td class="actions">
+            <a class="icon-btn" title="Xem" href="/promotions/edit?id=${p.idPromotion}">👁️</a>
+            <a class="icon-btn" title="Sửa" href="/promotions/edit?id=${p.idPromotion}">✏️</a>
+            <button class="icon-btn" title="Xóa" onclick="removePromotion(${p.idPromotion})">🗑️</button>
+          </td>
+        </tr>`).join('');
+      document.getElementById('pagination').innerHTML = '';
+      showMessage('Đã áp dụng sắp xếp/bộ lọc', 'info');
+    });
+}
+
+function getStatusText(status) {
+  const statusMap = {
+    'ACTIVE': 'Đang hoạt động',
+    'INACTIVE': 'Không hoạt động', 
+    'EXPIRED': 'Đã hết hạn',
+    'UPCOMING': 'Sắp diễn ra'
+  };
+  return statusMap[status] || status;
+}
+
+function showMessage(text, type){
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = `alert ${type}`;
+  el.style.display = 'block';
+  setTimeout(()=>{ el.style.display='none'; }, 2500);
+}
+
+loadPage(0);
+</script>
+
+</body>
+</html>
+

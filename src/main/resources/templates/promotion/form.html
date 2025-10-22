@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phiếu khuyến mãi</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div th:replace="fragments/header :: header"></div>
+
+<main class="container">
+    <a class="btn" href="/promotions">← Quay lại</a>
+    <h1 id="formTitle">+ Thêm phiếu khuyến mãi</h1>
+
+    <form id="promotionForm" class="form">
+        <input type="hidden" id="idPromotion">
+        <div class="grid-2">
+            <div class="form-group">
+                <label for="name">Tên phiếu</label>
+                <input id="name" required placeholder="Nhập tên khuyến mãi" />
+            </div>
+            <div class="form-group">
+                <label for="discountPercent">Giảm giá (%)</label>
+                <input id="discountPercent" type="number" step="0.01" min="0.01" max="100" required />
+            </div>
+            <div class="form-group">
+                <label for="startDate">Ngày bắt đầu</label>
+                <input id="startDate" type="date" required />
+            </div>
+            <div class="form-group">
+                <label for="endDate">Ngày kết thúc</label>
+                <input id="endDate" type="date" required />
+            </div>
+            <div class="form-group span-2">
+                <label for="description">Mô tả</label>
+                <input id="description" placeholder="Mô tả khuyến mãi" />
+            </div>
+            <div class="form-group">
+                <label for="status">Trạng thái</label>
+                <select id="status" required>
+                    <option value="ACTIVE">Đang hoạt động</option>
+                    <option value="INACTIVE">Không hoạt động</option>
+                    <option value="EXPIRED">Đã hết hạn</option>
+                    <option value="UPCOMING">Sắp diễn ra</option>
+                </select>
+            </div>
+        </div>
+        <div class="actions">
+            <button type="submit" class="btn primary">Lưu</button>
+            <a class="btn" href="/promotions">Hủy</a>
+        </div>
+    </form>
+</main>
+
+<div th:replace="fragments/footer :: footer"></div>
+
+<script>
+const apiBase = '/api/promotions';
+
+const params = new URLSearchParams(location.search);
+const id = params.get('id');
+
+if (id) {
+  document.getElementById('formTitle').textContent = 'Chỉnh sửa phiếu khuyến mãi';
+  fetch(`${apiBase}/${id}`).then(r=>r.json()).then(p=>{
+    document.getElementById('idPromotion').value = p.idPromotion || '';
+    document.getElementById('name').value = p.name || '';
+    document.getElementById('discountPercent').value = p.discountPercent || '';
+    document.getElementById('startDate').value = p.startDate || '';
+    document.getElementById('endDate').value = p.endDate || '';
+    document.getElementById('description').value = p.description || '';
+    document.getElementById('status').value = p.status || 'ACTIVE';
+  });
+}
+
+document.getElementById('promotionForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const payload = {
+    idPromotion: document.getElementById('idPromotion').value || null,
+    name: document.getElementById('name').value.trim(),
+    discountPercent: parseFloat(document.getElementById('discountPercent').value),
+    startDate: document.getElementById('startDate').value,
+    endDate: document.getElementById('endDate').value,
+    description: document.getElementById('description').value.trim(),
+    status: document.getElementById('status').value
+  };
+
+  const method = id ? 'PUT' : 'POST';
+  const url = id ? `${apiBase}/${id}` : apiBase;
+
+  fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(async r => {
+      if (!r.ok) { const t = await r.text(); throw new Error(t || 'Lỗi lưu'); }
+      return r.json();
+    })
+    .then(() => { window.location.href = '/promotions'; })
+    .catch(err => alert(err.message));
+});
+</script>
+
+</body>
+</html>
+
